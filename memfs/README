@@ -1,0 +1,10 @@
+-> Run as follows. [-d debug logging]
+   ./memfs -d /mnt/check_fuse/bigfileset/00000001/
+
+-> Specify the filename to be created upon starting the fs with --filename tag.
+   If it's not specified, default value of "00000001" is used. 
+   
+   ./memfs --filename=testfile /mnt/check_fuse/bigfileset/00000001/
+
+-> Run with writeback_cache enabled.
+   ./memfs -o writeback_cache /mnt/check_fuse/bigfileset/00000001/
