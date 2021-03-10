@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2021      Tony Mason
  * Copyright (c) 2018      Manu Mathew
  * Copyright (c) 2016-2017 Bharath Kumar Reddy Vangoor
  * Copyright (c) 2017      Swaminathan Sivaraman
@@ -65,20 +66,24 @@ int log_open(char *statsDir)
 {
 	char *trace_path = NULL;
 
-	if (statsDir) {
+	if (statsDir)
+	{
 		trace_path = (char *)malloc(strlen(statsDir) +
-				TRACE_FILE_LEN + 1);
+									TRACE_FILE_LEN + 1);
 		memset(trace_path, 0, strlen(statsDir) + TRACE_FILE_LEN + 1);
 		strncpy(trace_path, statsDir, strlen(statsDir));
-		strncat(trace_path, TRACE_FILE, TRACE_FILE_LEN);
-	} else {
+		strcat(trace_path, TRACE_FILE);
+	}
+	else
+	{
 		trace_path = (char *)malloc(TRACE_FILE_LEN);
 		memset(trace_path, 0, TRACE_FILE_LEN);
-		strncpy(trace_path, TRACE_FILE + 1, TRACE_FILE_LEN-1);
+		strncpy(trace_path, TRACE_FILE + 1, TRACE_FILE_LEN - 1);
 	}
 	printf("Trace file location : %s\n", trace_path);
 	logfile = fopen(trace_path, "w");
-	if (logfile == NULL) {
+	if (logfile == NULL)
+	{
 		perror("logfile");
 		free(trace_path);
 		return -1;
@@ -95,18 +100,18 @@ void log_close(void)
 		fclose(logfile);
 }
 
-
 int64_t print_timer(void)
 {
 	struct timespec tms;
 
-	if (clock_gettime(CLOCK_REALTIME, &tms)) {
+	if (clock_gettime(CLOCK_REALTIME, &tms))
+	{
 		printf("ERROR\n");
 		return 0;
 	}
 	int64_t micros = tms.tv_sec * 1000000;
 
-	micros += tms.tv_nsec/1000;
+	micros += tms.tv_nsec / 1000;
 	if (tms.tv_nsec % 1000 >= 500)
 		++micros;
 	return micros;
@@ -126,9 +131,9 @@ int print_banner(void)
 	tid = syscall(SYS_gettid);
 	if (time == 0)
 		return -1;
-	len = sprintf(banner, "Time : %"PRId64" Pid : %d Tid : %lu ",
-							time, pid, tid);
-	(void) len;
+	len = sprintf(banner, "Time : %" PRId64 " Pid : %d Tid : %lu ",
+				  time, pid, tid);
+	(void)len;
 	fputs(banner, logfile);
 	return 0;
 }
@@ -140,7 +145,8 @@ void StackFS_trace(const char *format, ...)
 
 	/*lock*/
 	pthread_spin_lock(&spinlock);
-	if (logfile) {
+	if (logfile)
+	{
 		/*Banner : time + pid + tid*/
 		ret = print_banner();
 		if (ret)
@@ -161,19 +167,20 @@ trace_out:
 /* The node structure that we maintain as our local cache which maps
  * the ino numbers to their full path, this address is stored as part
  * of the value of the hash table */
-struct lo_inode {
+struct lo_inode
+{
 	struct lo_inode *next;
 	struct lo_inode *prev;
-/* Full path of the underlying ext4 path
+	/* Full path of the underlying ext4 path
  * correspoding to its ino (easy way to extract back) */
 	char *name;
-/* Inode numbers and dev no's of
+	/* Inode numbers and dev no's of
  * underlying EXT4 F/s for the above path */
 	ino_t ino;
 	dev_t dev;
-/* inode number sent to lower F/S */
+	/* inode number sent to lower F/S */
 	ino_t lo_ino;
-/* Lookup count of this node */
+	/* Lookup count of this node */
 	uint64_t nlookup;
 };
 
@@ -186,7 +193,8 @@ struct lo_inode {
  * (we start with NODE_TABLE_MIN_SIZE)
  * 4. split	--> used to resize the table
  * (this is how fuse-lib does) */
-struct node_table {
+struct node_table
+{
 	struct lo_inode **array;
 	size_t use;
 	size_t size;
@@ -196,9 +204,10 @@ struct node_table {
 static int hash_table_init(struct node_table *t)
 {
 	t->size = HASH_TABLE_MIN_SIZE;
-	t->array = (struct lo_inode **) calloc(1,
-			sizeof(struct lo_inode *) * t->size);
-	if (t->array == NULL) {
+	t->array = (struct lo_inode **)calloc(1,
+										  sizeof(struct lo_inode *) * t->size);
+	if (t->array == NULL)
+	{
 		fprintf(stderr, "fuse: memory allocation failed\n");
 		return -1;
 	}
@@ -219,7 +228,8 @@ static int hash_table_resize(struct node_table *t)
 	void *newarray = NULL;
 
 	newarray = realloc(t->array, sizeof(struct lo_inode *) * newsize);
-	if (newarray == NULL) {
+	if (newarray == NULL)
+	{
 		fprintf(stderr, "fuse: memory allocation failed\n");
 		return -1;
 	}
@@ -235,20 +245,22 @@ static int hash_table_resize(struct node_table *t)
 
 /* The structure which is used to store the hash table
  * and it is always comes as part of the req structure */
-struct lo_data {
-/* hash table mapping key (inode no + complete path) -->
+struct lo_data
+{
+	/* hash table mapping key (inode no + complete path) -->
  *  value (linked list of node's - open chaining) */
 	struct node_table hash_table;
 	/* protecting the above hash table */
 	pthread_spinlock_t spinlock;
-/* put the root Inode '/' here itself for faster
+	/* put the root Inode '/' here itself for faster
  * access and some other useful raesons */
 	struct lo_inode root;
 	/* do we still need this ? let's see*/
 	double attr_valid;
 };
 
-struct lo_dirptr {
+struct lo_dirptr
+{
 	DIR *dp;
 	struct dirent *entry;
 	off_t offset;
@@ -256,13 +268,12 @@ struct lo_dirptr {
 
 static struct lo_dirptr *lo_dirptr(struct fuse_file_info *fi)
 {
-	return ((struct lo_dirptr *) ((uintptr_t) fi->fh));
+	return ((struct lo_dirptr *)((uintptr_t)fi->fh));
 }
-
 
 static struct lo_data *get_lo_data(fuse_req_t req)
 {
-	return (struct lo_data *) fuse_req_userdata(req);
+	return (struct lo_data *)fuse_req_userdata(req);
 }
 
 static struct lo_inode *lo_inode(fuse_req_t req, fuse_ino_t ino)
@@ -270,7 +281,7 @@ static struct lo_inode *lo_inode(fuse_req_t req, fuse_ino_t ino)
 	if (ino == FUSE_ROOT_ID)
 		return &get_lo_data(req)->root;
 	else
-		return (struct lo_inode *) (uintptr_t) ino;
+		return (struct lo_inode *)(uintptr_t)ino;
 }
 
 static char *lo_name(fuse_req_t req, fuse_ino_t ino)
@@ -279,7 +290,8 @@ static char *lo_name(fuse_req_t req, fuse_ino_t ino)
 }
 
 /* This is what given to the kernel FUSE F/S */
-static ino_t get_lower_fuse_inode_no(fuse_req_t req, fuse_ino_t ino) {
+static ino_t get_lower_fuse_inode_no(fuse_req_t req, fuse_ino_t ino)
+{
 	return lo_inode(req, ino)->lo_ino;
 }
 
@@ -288,18 +300,17 @@ static ino_t get_lower_fuse_inode_no(fuse_req_t req, fuse_ino_t ino) {
 //	return lo_inode(req, ino)->ino;
 //}
 
-
 static double lo_attr_valid_time(fuse_req_t req)
 {
-	return ((struct lo_data *) fuse_req_userdata(req))->attr_valid;
+	return ((struct lo_data *)fuse_req_userdata(req))->attr_valid;
 }
 
 static void construct_full_path(fuse_req_t req, fuse_ino_t ino,
-				char *fpath, const char *path)
+								char *fpath, const char *path)
 {
 	strcpy(fpath, lo_name(req, ino));
-	strncat(fpath, "/", 1);
-	strncat(fpath, path, PATH_MAX);
+	strcat(fpath, "/");
+	strcat(fpath, path);
 }
 
 /*======================End=======================================*/
@@ -316,7 +327,7 @@ static size_t name_hash(struct lo_data *lo_data, fuse_ino_t ino,
 	name = fullpath;
 
 	for (; *name; name++)
-		hash = hash * 31 + (unsigned char) *name;
+		hash = hash * 31 + (unsigned char)*name;
 
 	hash %= lo_data->hash_table.size;
 	oldhash = hash % (lo_data->hash_table.size / 2);
@@ -337,15 +348,17 @@ static void remap_hash_table(struct lo_data *lo_data)
 	if (t->split == t->size / 2)
 		return;
 
-/* split this bucket by recalculating the hash */
+	/* split this bucket by recalculating the hash */
 	hash = t->split;
 	t->split++;
 
-	for (nodep = &t->array[hash]; *nodep != NULL; nodep = next) {
+	for (nodep = &t->array[hash]; *nodep != NULL; nodep = next)
+	{
 		struct lo_inode *node = *nodep;
 		size_t newhash = name_hash(lo_data, node->ino, node->name);
 
-		if (newhash != hash) {
+		if (newhash != hash)
+		{
 			prev = node->prev;
 			*nodep = node->next;
 			if (*nodep)
@@ -357,19 +370,21 @@ static void remap_hash_table(struct lo_data *lo_data)
 				(t->array[newhash])->prev = node;
 			t->array[newhash] = node;
 			next = nodep;
-		} else {
+		}
+		else
+		{
 			next = &node->next;
 		}
 	}
 
-/* If we have reached the splitting to half of the size
+	/* If we have reached the splitting to half of the size
  * then double the size of hash table */
 	if (t->split == t->size / 2)
 		hash_table_resize(t);
 }
 
 static int insert_to_hash_table(struct lo_data *lo_data,
-				struct lo_inode *lo_inode)
+								struct lo_inode *lo_inode)
 {
 	size_t hash = name_hash(lo_data, lo_inode->ino, lo_inode->name);
 
@@ -406,22 +421,24 @@ static void remerge_hash_table(struct lo_data *lo_data)
 	struct node_table *t = &lo_data->hash_table;
 	int iter;
 
-/* This means all the hashes would be under the half size
+	/* This means all the hashes would be under the half size
  * of table (so simply make it half) */
 	if (t->split == 0)
 		hash_table_reduce(t);
 
-	for (iter = 8; t->split > 0 && iter; iter--) {
+	for (iter = 8; t->split > 0 && iter; iter--)
+	{
 		struct lo_inode **upper;
 
 		t->split--;
 		upper = &t->array[t->split + t->size / 2];
-		if (*upper) {
+		if (*upper)
+		{
 			struct lo_inode **nodep;
 			struct lo_inode *prev = NULL;
 
 			for (nodep = &t->array[t->split];
-					*nodep; nodep = &(*nodep)->next)
+				 *nodep; nodep = &(*nodep)->next)
 				prev = *nodep;
 
 			*nodep = *upper;
@@ -433,7 +450,7 @@ static void remerge_hash_table(struct lo_data *lo_data)
 }
 
 static int delete_from_hash_table(struct lo_data *lo_data,
-					struct lo_inode *lo_inode)
+								  struct lo_inode *lo_inode)
 {
 	struct lo_inode *prev, *next;
 
@@ -445,12 +462,15 @@ static int delete_from_hash_table(struct lo_data *lo_data,
 	prev = lo_inode->prev;
 	next = lo_inode->next;
 
-	if (prev) {
+	if (prev)
+	{
 		prev->next = next;
 		if (next)
 			next->prev = prev;
 		goto del_out;
-	} else {
+	}
+	else
+	{
 		hash = name_hash(lo_data, lo_inode->ino, lo_inode->name);
 
 		if (next)
@@ -476,15 +496,16 @@ del_out:
 /* Function which checks the inode in the hash table
  * by calculating the hash from ino and full path */
 static struct lo_inode *lookup_lo_inode(struct lo_data *lo_data,
-				struct stat *st, const char *fullpath)
+										struct stat *st, const char *fullpath)
 {
 	size_t hash = name_hash(lo_data, st->st_ino, fullpath);
 	struct lo_inode *node;
 
 	for (node = lo_data->hash_table.array[hash]; node != NULL;
-						node = node->next) {
+		 node = node->next)
+	{
 		if ((node->ino == st->st_ino) && (node->dev == st->st_dev) &&
-					(strcmp(node->name, fullpath) == 0))
+			(strcmp(node->name, fullpath) == 0))
 			return node;
 	}
 
@@ -496,9 +517,11 @@ void free_hash_table(struct lo_data *lo_data)
 	struct lo_inode *node, *next;
 	int i;
 
-	for (i = 0; i < lo_data->hash_table.size; i++) {
+	for (i = 0; i < lo_data->hash_table.size; i++)
+	{
 		node = lo_data->hash_table.array[i];
-		while (node) {
+		while (node)
+		{
 			next = node->next;
 			/* free up the node */
 			free(node->name);
@@ -526,21 +549,23 @@ struct lo_inode *find_lo_inode(fuse_req_t req, struct stat *st, char *fullpath)
 
 	lo_inode = lookup_lo_inode(lo_data, st, fullpath);
 
-	if (lo_inode == NULL) {
+	if (lo_inode == NULL)
+	{
 		/* create the node and insert into hash_table */
-		lo_inode =  calloc(1, sizeof(struct lo_inode));
+		lo_inode = calloc(1, sizeof(struct lo_inode));
 		if (!lo_inode)
 			goto find_out;
 		lo_inode->ino = st->st_ino;
 		lo_inode->dev = st->st_dev;
 		lo_inode->name = strdup(fullpath);
 		/* store this for mapping (debugging) */
-		lo_inode->lo_ino = (uintptr_t) lo_inode;
+		lo_inode->lo_ino = (uintptr_t)lo_inode;
 		lo_inode->next = lo_inode->prev = NULL;
 
 		/* insert into hash table */
 		res = insert_to_hash_table(lo_data, lo_inode);
-		if (res == -1) {
+		if (res == -1)
+		{
 			free(lo_inode->name);
 			free(lo_inode);
 			lo_inode = NULL;
@@ -554,7 +579,7 @@ find_out:
 }
 
 static void stackfs_ll_lookup(fuse_req_t req, fuse_ino_t parent,
-						const char *name)
+							  const char *name)
 {
 	struct fuse_entry_param e;
 	int res;
@@ -577,7 +602,8 @@ static void stackfs_ll_lookup(fuse_req_t req, fuse_ino_t parent,
 	generate_end_time(req);
 	populate_time(req);
 
-	if (res == 0) {
+	if (res == 0)
+	{
 		struct lo_inode *inode;
 
 		inode = find_lo_inode(req, &e.attr, fullPath);
@@ -587,12 +613,15 @@ static void stackfs_ll_lookup(fuse_req_t req, fuse_ino_t parent,
 
 		if (!inode)
 			fuse_reply_err(req, ENOMEM);
-		else {
+		else
+		{
 			/* store this address for faster path conversations */
 			e.ino = inode->lo_ino;
 			fuse_reply_entry(req, &e);
 		}
-	} else {
+	}
+	else
+	{
 		if (fullPath)
 			free(fullPath);
 		fuse_reply_err(req, ENOENT);
@@ -600,11 +629,11 @@ static void stackfs_ll_lookup(fuse_req_t req, fuse_ino_t parent,
 }
 
 static void stackfs_ll_getattr(fuse_req_t req, fuse_ino_t ino,
-					struct fuse_file_info *fi)
+							   struct fuse_file_info *fi)
 {
 	int res;
 	struct stat buf;
-	(void) fi;
+	(void)fi;
 	double attr_val;
 
 	//StackFS_trace("Getattr called on name : %s and inode : %llu",
@@ -615,16 +644,16 @@ static void stackfs_ll_getattr(fuse_req_t req, fuse_ino_t ino,
 	generate_end_time(req);
 	populate_time(req);
 	if (res == -1)
-		return (void) fuse_reply_err(req, errno);
+		return (void)fuse_reply_err(req, errno);
 
 	fuse_reply_attr(req, &buf, attr_val);
 }
 
 static void stackfs_ll_setattr(fuse_req_t req, fuse_ino_t ino,
-		struct stat *attr, int to_set, struct fuse_file_info *fi)
+							   struct stat *attr, int to_set, struct fuse_file_info *fi)
 {
 	int res;
-	(void) fi;
+	(void)fi;
 	struct stat buf;
 	double attr_val;
 
@@ -632,27 +661,31 @@ static void stackfs_ll_setattr(fuse_req_t req, fuse_ino_t ino,
 	//			lo_name(req, ino), lo_inode(req, ino)->ino);
 	attr_val = lo_attr_valid_time(req);
 	generate_start_time(req);
-	if (to_set & FUSE_SET_ATTR_SIZE) {
+	if (to_set & FUSE_SET_ATTR_SIZE)
+	{
 		/*Truncate*/
 		res = truncate(lo_name(req, ino), attr->st_size);
-		if (res != 0) {
+		if (res != 0)
+		{
 			generate_end_time(req);
 			populate_time(req);
-			return (void) fuse_reply_err(req, errno);
+			return (void)fuse_reply_err(req, errno);
 		}
 	}
 
-	if (to_set & (FUSE_SET_ATTR_ATIME | FUSE_SET_ATTR_MTIME)) {
+	if (to_set & (FUSE_SET_ATTR_ATIME | FUSE_SET_ATTR_MTIME))
+	{
 		/* Update Time */
 		struct utimbuf tv;
 
 		tv.actime = attr->st_atime;
 		tv.modtime = attr->st_mtime;
 		res = utime(lo_name(req, ino), &tv);
-		if (res != 0) {
+		if (res != 0)
+		{
 			generate_end_time(req);
 			populate_time(req);
-			return (void) fuse_reply_err(req, errno);
+			return (void)fuse_reply_err(req, errno);
 		}
 	}
 
@@ -661,13 +694,13 @@ static void stackfs_ll_setattr(fuse_req_t req, fuse_ino_t ino,
 	generate_end_time(req);
 	populate_time(req);
 	if (res != 0)
-		return (void) fuse_reply_err(req, errno);
+		return (void)fuse_reply_err(req, errno);
 
 	fuse_reply_attr(req, &buf, attr_val);
 }
 
 static void stackfs_ll_create(fuse_req_t req, fuse_ino_t parent,
-		const char *name, mode_t mode, struct fuse_file_info *fi)
+							  const char *name, mode_t mode, struct fuse_file_info *fi)
 {
 	int fd, res;
 	struct fuse_entry_param e;
@@ -685,7 +718,8 @@ static void stackfs_ll_create(fuse_req_t req, fuse_ino_t parent,
 
 	fd = creat(fullPath, mode);
 
-	if (fd == -1) {
+	if (fd == -1)
+	{
 		if (fullPath)
 			free(fullPath);
 		generate_end_time(req);
@@ -702,24 +736,26 @@ static void stackfs_ll_create(fuse_req_t req, fuse_ino_t parent,
 	generate_end_time(req);
 	populate_time(req);
 
-	if (res == 0) {
+	if (res == 0)
+	{
 		/* insert lo_inode into the hash table */
 		struct lo_data *lo_data;
 		struct lo_inode *lo_inode;
 
 		lo_inode = calloc(1, sizeof(struct lo_inode));
-		if (!lo_inode) {
+		if (!lo_inode)
+		{
 			if (fullPath)
 				free(fullPath);
 
-			return (void) fuse_reply_err(req, errno);
+			return (void)fuse_reply_err(req, errno);
 		}
 
 		lo_inode->ino = e.attr.st_ino;
 		lo_inode->dev = e.attr.st_dev;
 		lo_inode->name = strdup(fullPath);
 		/* store this for mapping (debugging) */
-		lo_inode->lo_ino = (uintptr_t) lo_inode;
+		lo_inode->lo_ino = (uintptr_t)lo_inode;
 		lo_inode->next = lo_inode->prev = NULL;
 		free(fullPath);
 
@@ -730,18 +766,23 @@ static void stackfs_ll_create(fuse_req_t req, fuse_ino_t parent,
 
 		pthread_spin_unlock(&lo_data->spinlock);
 
-		if (res == -1) {
+		if (res == -1)
+		{
 			free(lo_inode->name);
 			free(lo_inode);
 			fuse_reply_err(req, EBUSY);
-		} else {
+		}
+		else
+		{
 			lo_inode->nlookup++;
 			e.ino = lo_inode->lo_ino;
 			//StackFS_trace("Create called, e.ino : %llu", e.ino);
 			fi->fh = fd;
 			fuse_reply_create(req, &e, fi);
 		}
-	} else {
+	}
+	else
+	{
 		if (fullPath)
 			free(fullPath);
 		fuse_reply_err(req, errno);
@@ -749,7 +790,7 @@ static void stackfs_ll_create(fuse_req_t req, fuse_ino_t parent,
 }
 
 static void stackfs_ll_mkdir(fuse_req_t req, fuse_ino_t parent,
-				const char *name, mode_t mode)
+							 const char *name, mode_t mode)
 {
 	int res;
 	struct fuse_entry_param e;
@@ -766,7 +807,8 @@ static void stackfs_ll_mkdir(fuse_req_t req, fuse_ino_t parent,
 	generate_start_time(req);
 	res = mkdir(fullPath, mode);
 
-	if (res == -1) {
+	if (res == -1)
+	{
 		/* Error occurred while creating the directory */
 		if (fullPath)
 			free(fullPath);
@@ -785,24 +827,26 @@ static void stackfs_ll_mkdir(fuse_req_t req, fuse_ino_t parent,
 	generate_end_time(req);
 	populate_time(req);
 
-	if (res == 0) {
+	if (res == 0)
+	{
 		/* insert lo_inode into the hash table */
 		struct lo_data *lo_data;
 		struct lo_inode *lo_inode;
 
 		lo_inode = calloc(1, sizeof(struct lo_inode));
-		if (!lo_inode) {
+		if (!lo_inode)
+		{
 			if (fullPath)
 				free(fullPath);
 
-			return (void) fuse_reply_err(req, errno);
+			return (void)fuse_reply_err(req, errno);
 		}
 
 		lo_inode->ino = e.attr.st_ino;
 		lo_inode->dev = e.attr.st_dev;
 		lo_inode->name = strdup(fullPath);
 		/* store this for mapping (debugging) */
-		lo_inode->lo_ino = (uintptr_t) lo_inode;
+		lo_inode->lo_ino = (uintptr_t)lo_inode;
 		lo_inode->next = lo_inode->prev = NULL;
 		free(fullPath);
 
@@ -814,16 +858,21 @@ static void stackfs_ll_mkdir(fuse_req_t req, fuse_ino_t parent,
 
 		pthread_spin_unlock(&lo_data->spinlock);
 
-		if (res == -1) {
+		if (res == -1)
+		{
 			free(lo_inode->name);
 			free(lo_inode);
 			fuse_reply_err(req, EBUSY);
-		} else {
+		}
+		else
+		{
 			lo_inode->nlookup++;
 			e.ino = lo_inode->lo_ino;
 			fuse_reply_entry(req, &e);
 		}
-	} else {
+	}
+	else
+	{
 		if (fullPath)
 			free(fullPath);
 		fuse_reply_err(req, errno);
@@ -831,7 +880,7 @@ static void stackfs_ll_mkdir(fuse_req_t req, fuse_ino_t parent,
 }
 
 static void stackfs_ll_open(fuse_req_t req, fuse_ino_t ino,
-					struct fuse_file_info *fi)
+							struct fuse_file_info *fi)
 {
 	int fd;
 
@@ -845,7 +894,7 @@ static void stackfs_ll_open(fuse_req_t req, fuse_ino_t ino,
 	//StackFS_trace("Open name : %s and inode : %llu", lo_name(req, ino), get_lower_fuse_inode_no(req, ino));
 
 	if (fd == -1)
-		return (void) fuse_reply_err(req, errno);
+		return (void)fuse_reply_err(req, errno);
 
 	fi->fh = fd;
 
@@ -853,7 +902,7 @@ static void stackfs_ll_open(fuse_req_t req, fuse_ino_t ino,
 }
 
 static void stackfs_ll_opendir(fuse_req_t req, fuse_ino_t ino,
-					struct fuse_file_info *fi)
+							   struct fuse_file_info *fi)
 {
 	DIR *dp;
 	struct lo_dirptr *d;
@@ -867,29 +916,30 @@ static void stackfs_ll_opendir(fuse_req_t req, fuse_ino_t ino,
 	populate_time(req);
 
 	if (dp == NULL)
-		return (void) fuse_reply_err(req, errno);
+		return (void)fuse_reply_err(req, errno);
 
 	d = malloc(sizeof(struct lo_dirptr));
 	d->dp = dp;
 	d->offset = 0;
 	d->entry = NULL;
 
-	fi->fh = (uintptr_t) d;
+	fi->fh = (uintptr_t)d;
 
 	fuse_reply_open(req, fi);
 }
 
 static void stackfs_ll_read(fuse_req_t req, fuse_ino_t ino, size_t size,
-				off_t offset, struct fuse_file_info *fi)
+							off_t offset, struct fuse_file_info *fi)
 {
 	int res;
-	(void) ino;
+	(void)ino;
 	//struct timespec start, end;
 	//long time;
 	//long time_sec;
 
 	StackFS_trace("StackFS Read start on inode : %llu", get_lower_fuse_inode_no(req, ino));
-	if (USE_SPLICE) {
+	if (USE_SPLICE)
+	{
 		struct fuse_bufvec buf = FUSE_BUFVEC_INIT(size);
 
 		//StackFS_trace("Splice Read name : %s, off : %lu, size : %zu",
@@ -902,7 +952,9 @@ static void stackfs_ll_read(fuse_req_t req, fuse_ino_t ino, size_t size,
 		generate_end_time(req);
 		populate_time(req);
 		fuse_reply_data(req, &buf, FUSE_BUF_SPLICE_MOVE);
-	} else {
+	}
+	else
+	{
 		char *buf;
 
 		//StackFS_trace("Read on name : %s, Kernel inode : %llu, fuse inode : %llu, off : %lu, size : %zu",
@@ -920,7 +972,7 @@ static void stackfs_ll_read(fuse_req_t req, fuse_ino_t ino, size_t size,
 		//time += time_sec;
 		//StackFS_trace("Read inode : %llu off : %lu size : %zu diff : %llu", get_lower_fuse_inode_no(req, ino), offset, size, time);
 		if (res == -1)
-			return (void) fuse_reply_err(req, errno);
+			return (void)fuse_reply_err(req, errno);
 		res = fuse_reply_buf(req, buf, res);
 		free(buf);
 	}
@@ -928,40 +980,45 @@ static void stackfs_ll_read(fuse_req_t req, fuse_ino_t ino, size_t size,
 }
 
 static void stackfs_ll_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
-					off_t off, struct fuse_file_info *fi)
+							   off_t off, struct fuse_file_info *fi)
 {
 	struct lo_dirptr *d;
 	char *buf = NULL;
 	char *p = NULL;
 	size_t rem;
 	int err;
-	(void) ino;
+	(void)ino;
 
 	//StackFS_trace("Readdir called on name : %s and inode : %llu",
 	//			lo_name(req, ino), lo_inode(req, ino)->ino);
 	d = lo_dirptr(fi);
-	buf = malloc(size*sizeof(char));
+	buf = malloc(size * sizeof(char));
 	if (!buf)
-		return (void) fuse_reply_err(req, ENOMEM);
+		return (void)fuse_reply_err(req, ENOMEM);
 
 	generate_start_time(req);
 	/* If offset is not same, need to seek it */
-	if (off != d->offset) {
+	if (off != d->offset)
+	{
 		seekdir(d->dp, off);
 		d->entry = NULL;
 		d->offset = off;
 	}
 	p = buf;
 	rem = size;
-	while (1) {
+	while (1)
+	{
 		size_t entsize;
 		off_t nextoff;
 
-		if (!d->entry) {
+		if (!d->entry)
+		{
 			errno = 0;
 			d->entry = readdir(d->dp);
-			if (!d->entry) {
-				if (errno && rem == size) {
+			if (!d->entry)
+			{
+				if (errno && rem == size)
+				{
 					err = errno;
 					goto error;
 				}
@@ -975,8 +1032,8 @@ static void stackfs_ll_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
 			.st_mode = d->entry->d_type << 12,
 		};
 		entsize = fuse_add_direntry(req, p, rem,
-					d->entry->d_name, &st, nextoff);
-	/* The above function returns the size of the entry size even though
+									d->entry->d_name, &st, nextoff);
+		/* The above function returns the size of the entry size even though
 	* the copy failed due to smaller buf size, so I'm checking after this
 	* function and breaking out incase we exceed the size.
 	*/
@@ -1006,9 +1063,9 @@ error:
 }
 
 static void stackfs_ll_release(fuse_req_t req, fuse_ino_t ino,
-					struct fuse_file_info *fi)
+							   struct fuse_file_info *fi)
 {
-	(void) ino;
+	(void)ino;
 
 	//StackFS_trace("Release called on name : %s and inode : %llu fd : %d ",
 	//		lo_name(req, ino), lo_inode(req, ino)->ino, fi->fh);
@@ -1021,10 +1078,10 @@ static void stackfs_ll_release(fuse_req_t req, fuse_ino_t ino,
 }
 
 static void stackfs_ll_releasedir(fuse_req_t req, fuse_ino_t ino,
-						struct fuse_file_info *fi)
+								  struct fuse_file_info *fi)
 {
 	struct lo_dirptr *d;
-	(void) ino;
+	(void)ino;
 
 	//StackFS_trace("Releasedir called on name : %s and inode : %llu",
 	//			lo_name(req, ino), lo_inode(req, ino)->ino);
@@ -1038,10 +1095,10 @@ static void stackfs_ll_releasedir(fuse_req_t req, fuse_ino_t ino,
 }
 
 static void stackfs_ll_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
-			size_t size, off_t off, struct fuse_file_info *fi)
+							 size_t size, off_t off, struct fuse_file_info *fi)
 {
 	int res;
-	(void) ino;
+	(void)ino;
 
 	//StackFS_trace("Write name : %s, inode : %llu, off : %lu, size : %zu",
 	//		lo_name(req, ino), lo_inode(req, ino)->ino, off, size);
@@ -1051,17 +1108,17 @@ static void stackfs_ll_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
 	populate_time(req);
 
 	if (res == -1)
-		return (void) fuse_reply_err(req, errno);
+		return (void)fuse_reply_err(req, errno);
 
 	fuse_reply_write(req, res);
 }
 
-#if	USE_SPLICE
+#if USE_SPLICE
 static void stackfs_ll_write_buf(fuse_req_t req, fuse_ino_t ino,
-		struct fuse_bufvec *buf, off_t off, struct fuse_file_info *fi)
+								 struct fuse_bufvec *buf, off_t off, struct fuse_file_info *fi)
 {
 	int res;
-	(void) ino;
+	(void)ino;
 
 	struct fuse_bufvec dst = FUSE_BUFVEC_INIT(fuse_buf_size(buf));
 
@@ -1083,7 +1140,7 @@ static void stackfs_ll_write_buf(fuse_req_t req, fuse_ino_t ino,
 #endif
 
 static void stackfs_ll_unlink(fuse_req_t req, fuse_ino_t parent,
-						const char *name)
+							  const char *name)
 {
 	int res;
 	char *fullPath = NULL;
@@ -1106,7 +1163,7 @@ static void stackfs_ll_unlink(fuse_req_t req, fuse_ino_t parent,
 }
 
 static void stackfs_ll_rmdir(fuse_req_t req, fuse_ino_t parent,
-						const char *name)
+							 const char *name)
 {
 	int res;
 	char *fullPath = NULL;
@@ -1130,7 +1187,7 @@ static void stackfs_ll_rmdir(fuse_req_t req, fuse_ino_t parent,
 }
 
 static void forget_inode(fuse_req_t req, struct lo_inode *inode,
-						uint64_t nlookup)
+						 uint64_t nlookup)
 {
 	int res;
 
@@ -1140,7 +1197,7 @@ static void forget_inode(fuse_req_t req, struct lo_inode *inode,
 	if (!inode->nlookup)
 		res = delete_from_hash_table(get_lo_data(req), inode);
 
-	(void) res;
+	(void)res;
 }
 
 static void stackfs_ll_forget(fuse_req_t req, fuse_ino_t ino, uint64_t nlookup)
@@ -1158,7 +1215,7 @@ static void stackfs_ll_forget(fuse_req_t req, fuse_ino_t ino, uint64_t nlookup)
 }
 
 static void stackfs_ll_forget_multi(fuse_req_t req, size_t count,
-					struct fuse_forget_data *forgets)
+									struct fuse_forget_data *forgets)
 {
 	size_t i;
 	struct lo_inode *inode;
@@ -1167,7 +1224,8 @@ static void stackfs_ll_forget_multi(fuse_req_t req, size_t count,
 
 	generate_start_time(req);
 	//StackFS_trace("Batch Forget count : %zu", count);
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < count; i++)
+	{
 		ino = forgets[i].ino;
 		nlookup = forgets[i].nlookup;
 		inode = lo_inode(req, ino);
@@ -1183,7 +1241,7 @@ static void stackfs_ll_forget_multi(fuse_req_t req, size_t count,
 }
 
 static void stackfs_ll_flush(fuse_req_t req, fuse_ino_t ino,
-					struct fuse_file_info *fi)
+							 struct fuse_file_info *fi)
 {
 	int err;
 
@@ -1201,7 +1259,8 @@ static void stackfs_ll_statfs(fuse_req_t req, fuse_ino_t ino)
 	int res;
 	struct statvfs buf;
 
-	if (ino) {
+	if (ino)
+	{
 		//StackFS_trace("Statfs called with name : %s, and inode : %llu",
 		//		lo_name(req, ino), lo_inode(req, ino)->ino);
 		memset(&buf, 0, sizeof(buf));
@@ -1218,7 +1277,7 @@ static void stackfs_ll_statfs(fuse_req_t req, fuse_ino_t ino)
 }
 
 static void stackfs_ll_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
-			struct fuse_file_info *fi)
+							 struct fuse_file_info *fi)
 {
 	int res;
 
@@ -1235,15 +1294,16 @@ static void stackfs_ll_fsync(fuse_req_t req, fuse_ino_t ino, int datasync,
 	fuse_reply_err(req, res);
 }
 
-#if  TESTING_XATTR
+#if TESTING_XATTR
 static void stackfs_ll_getxattr(fuse_req_t req, fuse_ino_t ino,
-					const char *name, size_t size)
+								const char *name, size_t size)
 {
 	int res;
 
 	//StackFS_trace("Function Trace : Getxattr");
-	if (size) {
-		char *value = (char *) malloc(size);
+	if (size)
+	{
+		char *value = (char *)malloc(size);
 
 		generate_start_time(req);
 		res = lgetxattr(lo_name(req, ino), name, value, size);
@@ -1255,7 +1315,9 @@ static void stackfs_ll_getxattr(fuse_req_t req, fuse_ino_t ino,
 			fuse_reply_err(req, errno);
 
 		free(value);
-	} else {
+	}
+	else
+	{
 		generate_start_time(req);
 		res = lgetxattr(lo_name(req, ino), name, NULL, 0);
 		generate_end_time(req);
@@ -1269,42 +1331,45 @@ static void stackfs_ll_getxattr(fuse_req_t req, fuse_ino_t ino,
 #endif
 
 static struct fuse_lowlevel_ops hello_ll_oper = {
-	.lookup		=	stackfs_ll_lookup,
-	.getattr	=	stackfs_ll_getattr,
-	.statfs		=	stackfs_ll_statfs,
-	.setattr	=	stackfs_ll_setattr,
-	.flush		=	stackfs_ll_flush,
-	.fsync		=	stackfs_ll_fsync,
-#if	TESTING_XATTR
-	.getxattr	=	stackfs_ll_getxattr,
+	.lookup = stackfs_ll_lookup,
+	.getattr = stackfs_ll_getattr,
+	.statfs = stackfs_ll_statfs,
+	.setattr = stackfs_ll_setattr,
+	.flush = stackfs_ll_flush,
+	.fsync = stackfs_ll_fsync,
+#if TESTING_XATTR
+	.getxattr = stackfs_ll_getxattr,
 #endif
-	.forget		=	stackfs_ll_forget,
-	.forget_multi	=	stackfs_ll_forget_multi,
-	.create		=	stackfs_ll_create,
-	.open		=	stackfs_ll_open,
-	.read		=	stackfs_ll_read,
-	.write		=	stackfs_ll_write,
-#if	USE_SPLICE
-	.write_buf	=	stackfs_ll_write_buf,
+	.forget = stackfs_ll_forget,
+	.forget_multi = stackfs_ll_forget_multi,
+	.create = stackfs_ll_create,
+	.open = stackfs_ll_open,
+	.read = stackfs_ll_read,
+	.write = stackfs_ll_write,
+#if USE_SPLICE
+	.write_buf = stackfs_ll_write_buf,
 #endif
-	.release	=	stackfs_ll_release,
-	.unlink		=	stackfs_ll_unlink,
-	.mkdir		=	stackfs_ll_mkdir,
-	.rmdir		=	stackfs_ll_rmdir,
-	.opendir	=	stackfs_ll_opendir,
-	.readdir	=	stackfs_ll_readdir,
-	.releasedir	=	stackfs_ll_releasedir
+	.release = stackfs_ll_release,
+	.unlink = stackfs_ll_unlink,
+	.mkdir = stackfs_ll_mkdir,
+	.rmdir = stackfs_ll_rmdir,
+	.opendir = stackfs_ll_opendir,
+	.readdir = stackfs_ll_readdir,
+	.releasedir = stackfs_ll_releasedir};
+
+struct stackFS_info
+{
+	char *rootDir;
+	char *statsDir;	   /* Path to copy any statistics details */
+	double attr_valid; /* Time in secs for attribute validation */
+	int is_help;
+	int tracing;
 };
 
-struct stackFS_info {
-	char	*rootDir;
-	char	*statsDir;/* Path to copy any statistics details */
-	double	attr_valid;/* Time in secs for attribute validation */
-	int	is_help;
-	int	tracing;
-};
-
-#define STACKFS_OPT(t, p) { t, offsetof(struct stackFS_info, p), 1 }
+#define STACKFS_OPT(t, p)                      \
+	{                                          \
+		t, offsetof(struct stackFS_info, p), 1 \
+	}
 
 static const struct fuse_opt stackfs_opts[] = {
 	STACKFS_OPT("-r %s", rootDir),
@@ -1314,29 +1379,30 @@ static const struct fuse_opt stackfs_opts[] = {
 	FUSE_OPT_KEY("--tracing", 1),
 	FUSE_OPT_KEY("-h", 0),
 	FUSE_OPT_KEY("--help", 0),
-	FUSE_OPT_END
-};
+	FUSE_OPT_END};
 
 static int stackfs_process_arg(void *data, const char *arg,
-				int key, struct fuse_args *outargs)
+							   int key, struct fuse_args *outargs)
 {
 	struct stackFS_info *s_info = data;
 
 	(void)outargs;
 	(void)arg;
 
-	switch (key) {
+	switch (key)
+	{
 	case 0:
 		s_info->is_help = 1;
 		return 0;
 	case 1:
-		s_info->tracing	= 1;
+		s_info->tracing = 1;
 		return 0;
 	default:
 		return 1;
 	}
 }
 
+#if 0
 int main(int argc, char **argv)
 {
 	int res = 0, err = 0;
@@ -1345,33 +1411,38 @@ int main(int argc, char **argv)
 	char *resolved_statsDir = NULL;
 	char *resolved_rootdir_path = NULL;
 	int multithreaded;
-
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 	/*Default attr valid time is 1 sec*/
 	struct stackFS_info s_info = {NULL, NULL, 1.0, 0, 0};
+	struct fuse_session *se = NULL;
 
 	res = fuse_opt_parse(&args, &s_info, stackfs_opts, stackfs_process_arg);
 
-	if (res) {
+	if (res)
+	{
 		printf("Failed to parse arguments\n");
 		return -1;
 	}
 
-	if (s_info.is_help) {
+	if (s_info.is_help)
+	{
 		print_usage();
 		return 0;
 	}
 
-	if (!s_info.rootDir) {
+	if (!s_info.rootDir)
+	{
 		printf("Root Directory is mandatory\n");
 		print_usage();
 		return -1;
 	}
 
-	if (s_info.statsDir) {
+	if (s_info.statsDir)
+	{
 		statsDir = s_info.statsDir;
 		resolved_statsDir = realpath(statsDir, NULL);
-		if (resolved_statsDir == NULL) {
+		if (resolved_statsDir == NULL)
+		{
 			printf("There is a problem in resolving the stats ");
 			printf("Directory passed %s\n", statsDir);
 			perror("Error");
@@ -1382,23 +1453,33 @@ int main(int argc, char **argv)
 
 	rootDir = s_info.rootDir;
 	struct lo_data *lo = NULL;
+	struct fuse_args = fargs = {
+		.argc = argc,
+		.argv = argv,
+		.allocated = 0,
+	};
+	struct fuse *f = fuse_new(&fargs, NULL /* fuse_operations */, 0 /* size of fuse_operations */, NULL /* private data */);
 
-	if (rootDir) {
-		lo = (struct lo_data *) calloc(1, sizeof(struct lo_data));
-		if (!lo) {
+	if (rootDir)
+	{
+		lo = (struct lo_data *)calloc(1, sizeof(struct lo_data));
+		if (!lo)
+		{
 			fprintf(stderr, "fuse: memory allocation failed\n");
 			res = -1;
 			goto out2; /* free the resolved_statsDir */
 		}
 		resolved_rootdir_path = realpath(rootDir, NULL);
-		if (!resolved_rootdir_path) {
+		if (!resolved_rootdir_path)
+		{
 			printf("There is a problem in resolving the root ");
 			printf("Directory Passed %s\n", rootDir);
 			perror("Error");
 			res = -1;
 			goto out3; /* free both resolved_statsDir, lo */
 		}
-		if (res == 0) {
+		if (res == 0)
+		{
 			(lo->root).name = resolved_rootdir_path;
 			(lo->root).ino = FUSE_ROOT_ID;
 			(lo->root).nlookup = 2;
@@ -1411,48 +1492,59 @@ int main(int argc, char **argv)
 			/* Initialise the spin lock for table */
 			pthread_spin_init(&(lo->spinlock), 0);
 		}
-	} else {
+	}
+	else
+	{
 		res = -1;
 		goto out2;
 	}
 
 	struct fuse_chan *ch;
-	char *mountpoint;
 
-	res = fuse_parse_cmdline(&args, &mountpoint, &multithreaded, NULL);
+	res = fuse_parse_cmdline(&args, &opts);
 
 	/* Initialise the spinlock before the logfile creation */
 	pthread_spin_init(&spinlock, 0);
 
-	if (s_info.tracing) {
+	if (s_info.tracing)
+	{
 		err = log_open(resolved_statsDir);
 		if (err)
+		{
 			printf("No log file created(but not a fatle error, ");
 			printf("so proceeding)\n");
-	} else
+		}
+	}
+	else
+	{
 		printf("No tracing\n");
-
+	}
 	printf("Multi Threaded : %d\n", multithreaded);
 
-	if (res != -1) {
-		ch = fuse_mount(mountpoint, &args);
-		if (ch) {
+	if (res != -1)
+	{
+		ch = fuse_mount(opts.mountpoint, &args);
+		if (ch)
+		{
 			struct fuse_session *se;
 
 			printf("Mounted Successfully\n");
-			se = fuse_lowlevel_new(&args, &hello_ll_oper,
-						sizeof(hello_ll_oper), lo);
-			if (se) {
-				if (fuse_set_signal_handlers(se) != -1) {
+
+			se = fuse_session_new(&args, &hello_ll_oper,
+								  sizeof(hello_ll_oper), lo);
+			if (se)
+			{
+				if (fuse_set_signal_handlers(se) != -1)
+				{
 					fuse_session_add_chan(se, ch);
 					if (resolved_statsDir)
 						fuse_session_add_statsDir(se,
-							resolved_statsDir);
+												  resolved_statsDir);
 					if (multithreaded)
 						err = fuse_session_loop_mt(se);
 					else
 						err = fuse_session_loop(se);
-					(void) err;
+					(void)err;
 
 					fuse_remove_signal_handlers(se);
 					fuse_session_remove_statsDir(se);
@@ -1494,4 +1586,197 @@ out2:
 		free(resolved_statsDir);
 out1:
 	return res;
+}
+
+#endif // 0
+
+int main(int argc, char **argv)
+{
+	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+	struct fuse_session *se = NULL;
+	struct fuse_cmdline_opts opts;
+	int ret = -1;
+	unsigned char is_args_parsed = 0;
+	unsigned char is_log_open = 0;
+	unsigned char is_mounted = 0;
+	unsigned char is_registered_signal_handlers = 0;
+	struct stackFS_info s_info = {NULL, NULL, 1.0, 0, 0};
+	char *resolved_statsDir = NULL;
+	char *resolved_rootdir_path = NULL;
+	char *rootDir = NULL;
+	char *statsDir = NULL;
+	struct lo_data *lo = NULL;
+
+	do
+	{
+		if (fuse_parse_cmdline(&args, &opts) != 0)
+			return 1;
+		if (opts.show_help)
+		{
+			printf("usage: %s [options] <mountpoint>\n\n", argv[0]);
+			fuse_cmdline_help();
+			fuse_lowlevel_help();
+			ret = 0;
+			break;
+		}
+		else if (opts.show_version)
+		{
+			printf("FUSE library version %s\n", fuse_pkgversion());
+			fuse_lowlevel_version();
+			ret = 0;
+			break;
+		}
+
+		if (opts.mountpoint == NULL)
+		{
+			print_usage();
+			ret = 1;
+			break;
+		}
+
+		ret = fuse_opt_parse(&args, &s_info, stackfs_opts, stackfs_process_arg);
+		if (0 != ret)
+		{
+			break;
+		}
+		is_args_parsed = 1;
+
+		if (s_info.is_help)
+		{
+			print_usage();
+			ret = 1;
+			break;
+		}
+
+		if (!s_info.rootDir)
+		{
+			printf("Root Directory is mandatory\n");
+			print_usage();
+			ret = -1;
+			break;
+		}
+
+		if (s_info.statsDir)
+		{
+			statsDir = s_info.statsDir;
+			resolved_statsDir = realpath(statsDir, NULL);
+		}
+
+		rootDir = s_info.rootDir;
+
+		resolved_rootdir_path = realpath(rootDir, NULL);
+		if (NULL == resolved_rootdir_path)
+		{
+			fprintf(stderr, "Unable to resolve root directory %s\n", rootDir);
+			perror("Error");
+			ret = -1;
+			break;
+		}
+
+		lo = (struct lo_data *)malloc(sizeof(struct lo_data));
+		if (NULL == lo)
+		{
+			fprintf(stderr, "fuse: memory allocation failed\n");
+			ret = -1;
+			break;
+		}
+
+		(lo->root).name = resolved_rootdir_path;
+		(lo->root).ino = FUSE_ROOT_ID;
+		(lo->root).nlookup = 2;
+		(lo->root).next = (lo->root).prev = NULL;
+		lo->attr_valid = s_info.attr_valid;
+		ret = hash_table_init(&lo->hash_table);
+		if (0 != ret)
+		{
+			break;
+		}
+		pthread_spin_init(&(lo->spinlock), 0);
+
+		if (s_info.tracing)
+		{
+			if (0 != log_open(resolved_statsDir))
+			{
+				fprintf(stderr, "No log file created, skipping\n");
+			}
+			is_log_open = 1;
+		}
+
+		se = fuse_session_new(&args, &hello_ll_oper,
+							  sizeof(hello_ll_oper), NULL);
+		if (se == NULL)
+		{
+			break;
+		}
+
+		if (fuse_set_signal_handlers(se) != 0)
+		{
+			break;
+		}
+		is_registered_signal_handlers = 1;
+
+		if (fuse_session_mount(se, opts.mountpoint) != 0)
+		{
+			break;
+		}
+		is_mounted = 1;
+
+		fuse_daemonize(opts.foreground);
+
+		/* Block until ctrl+c or fusermount -u */
+		if (opts.singlethread)
+		{
+			ret = fuse_session_loop(se);
+		}
+		else
+		{
+			ret = fuse_session_loop_mt(se, opts.clone_fd);
+		}
+	} while (0);
+
+	while (0 != ret)
+	{
+		if (is_args_parsed)
+		{
+			fuse_opt_free_args(&args);
+		}
+
+		if (is_log_open)
+		{
+			log_close();
+		}
+
+		if (NULL != lo)
+		{
+			pthread_spin_destroy(&(lo->spinlock));
+			free_hash_table(lo);
+			hash_table_destroy(&lo->hash_table);
+			pthread_spin_destroy(&spinlock); // there's no matching init?
+			free(lo);
+			lo = NULL;
+		}
+
+		if (NULL == se)
+		{
+			// No cleanup required
+			break;
+		}
+
+		if (is_mounted)
+		{
+			fuse_session_unmount(se);
+		}
+
+		if (is_registered_signal_handlers)
+		{
+			fuse_remove_signal_handlers(se);
+		}
+
+		fuse_session_destroy(se);
+		se = NULL;
+
+		break;
+	}
+
+	return ret;
 }
